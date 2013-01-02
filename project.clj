@@ -1,4 +1,4 @@
-(defproject com.quantisan/clatrix "0.2.2"
+(defproject com.quantisan/clatrix "0.2.3-SNAPSHOT"
   :description "Because using matrices in Clojure needs to not suck."
   :url "http://quantisan.github.com/clatrix"
   :license {:name "MIT License"
