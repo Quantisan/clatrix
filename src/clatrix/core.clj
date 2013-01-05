@@ -3,7 +3,9 @@
   (:use [slingshot.slingshot :only [throw+]])
   (:import [org.jblas DoubleMatrix ComplexDoubleMatrix ComplexDouble
             Decompose Decompose$LUDecomposition Eigen Solve Geometry
-            Singular MatrixFunctions]))
+            Singular MatrixFunctions]
+           [org.jblas.util Random]
+           [java.io Writer]))
 
 ;;; Clatrix is a fast matrix library for Clojure written atop [JBlas](http://jblas.org/)'
 ;;; ATLAS/LAPACK bindings. It's not intended to be the alpha and omega
@@ -38,7 +40,7 @@
     (cond
       (matrix? that) (.equals (.me this) (.me that))
       (coll? that) (and (= (count this) (count that))
-                       (every? true? (clojure.core/map #(== %1 %2) this that))) 
+                       (every? true? (clojure.core/map #(== %1 %2) this that)))
       (number? that) (and (= [1 1] (size this)) (= that (get this 0 0)))
       :else (.equals (.me this) that)))
   (first [this]
@@ -187,7 +189,7 @@
 
 (defmethod matrix ::double-matrix
   ([^DoubleMatrix x]
-   (matrix x (.isVector x) nil)) 
+   (matrix x (.isVector x) nil))
   ([^DoubleMatrix x vector? meta]
    (Matrix. x vector? meta)))
 
@@ -284,6 +286,11 @@
 ;;;
 ;;; It's also useful to generate random matrices. These are
 ;;; elementwise independent Unif(0,1) and normal.
+;;;
+;;; You can use `seed`, `unseed`, and `with-seed` to make repeatable
+;;; sequences of random numbers (for testing, for example,) similar
+;;; to `seed(n)` in R.
+;;;
 
 (promote-cfun* defn  rand   DoubleMatrix/rand)
 (promote-cfun* defn- randn* DoubleMatrix/randn)
@@ -300,6 +307,32 @@
              (.addi mu))))
   ([^long n ^long m] (randn* n m))
   ([^long n] (randn* n)))
+
+(defn seed
+  "You can set the seed used to generate the values in a random matrix if you
+need repeatablity for some reason."
+  [n]
+  (Random/seed n))
+
+(defonce ^:private uniquifier (atom 8682522807148012))
+
+(defn unseed
+  "When you are done changing the seed, you can go back to a pseudo-random seed.
+Uses the same algorithm as java's default Random constructor."
+  []
+  (Random/seed (swap! uniquifier
+                      #(bit-xor
+                        (unchecked-multiply (long %) 181783497276652981)
+                        (System/nanoTime)))))
+
+(defmacro with-seed
+  "If you want to control the scope of a seed you've set, you can use this convenient macro."
+  [n & body]
+  `(do
+     (seed ~n)
+     (try ~@body
+          (finally
+            (unseed)))))
 
 ;;; ## Element algebra
 ;;;
@@ -847,13 +880,13 @@
   `A = U (diag L) V`. If `(size A)` is `[n m]` and the rank of `A` is
   `k`, we have the size of `U` as `[n k]`, `(diag L)` as `[k k]`,
   and `(t V)` as `[k m]`.
-  
+
   Set `:type full` for the full SVD
   "
   [^Matrix A & {:keys [type] :or {type :sparse}}]
   (let [[U L V] (if (= type :full)
                   (dotom Singular/fullSVD A)
-                  (dotom Singular/sparseSVD A)) 
+                  (dotom Singular/sparseSVD A))
         left (matrix U)
         right (matrix V)
         values (seq (.toArray L))]
